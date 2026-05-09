@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cloud Notes - Apple Style</title>
+    <!-- Firebase SDKの読み込み -->
+    <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-firestore-compat.js"></script>
+    
+    <style>
+        :root {
+            --apple-bg: #f5f5f7;
+            --apple-yellow: #ffb300;
+            --apple-border: #d2d2d7;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--apple-bg);
+            display: flex;
+            justify-content: center;
+            padding: 40px 20px;
+            margin: 0;
+            color: #1d1d1f;
+        }
+
+        .container { width: 100%; max-width: 600px; }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(20px);
+            border-radius: 18px;
+            padding: 24px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.05);
+            margin-bottom: 30px;
+            border: 1px solid rgba(255,255,255,0.3);
+        }
+
+        textarea {
+            width: 100%; height: 100px; border: none; background: transparent;
+            font-size: 16px; resize: none; outline: none; padding: 10px 0;
+            border-bottom: 1px solid var(--apple-border);
+        }
+
+        .btn-row { display: flex; justify-content: flex-end; margin-top: 15px; }
+
+        button {
+            background-color: var(--apple-yellow); color: white; border: none;
+            padding: 8px 16px; border-radius: 20px; cursor: pointer; transition: 0.2s;
+            font-weight: 500;
+        }
+
+        button:hover { opacity: 0.8; }
+        button.delete-btn { background-color: #ff3b30; margin-left: 10px; }
+
+        /* リスト全体のスタイル */
+        ul { list-style: none; padding: 0; margin: 0; }
+
+        /* チェックボックスを上に配置するための修正 */
+        .note-item {
+            display: flex;
+            flex-direction: column; /* 縦並びに変更 */
+            align-items: flex-start; /* 左寄せ */
+            padding: 16px 0;
+            border-bottom: 0.5px solid var(--apple-border);
+        }
+
+        /* チェックボックスのスタイル */
+        .checkbox-container {
+            margin-bottom: 8px; /* テキストとの間隔 */
+        }
+
+        input[type="checkbox"] {
+            width: 22px;
+            height: 22px;
+            accent-color: var(--apple-yellow);
+            cursor: pointer;
+            margin: 0;
+        }
+
+        /* メモ本文のスタイル */
+        .note-text {
+            width: 100%;
+            font-size: 15px;
+            line-height: 1.5;
+            word-wrap: break-word;
+            color: #333;
+        }
+
+        .trash-section { opacity: 0.7; border-top: 2px dashed var(--apple-border); }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="glass-card">
+        <h2>📝 メモを作成</h2>
+        <textarea id="noteInput" placeholder="クラウドに保存されます..."></textarea>
+        <div class="btn-row">
+            <button onclick="saveNote()">保存</button>
+        </div>
+    </div>
+
+    <div class="glass-card">
+        <h2>🗒 メモ一覧</h2>
+        <ul id="noteList"></ul>
+        <div class="btn-row">
+            <button class="delete-btn" onclick="updateStatus('trash')">選択したメモをゴミ箱へ</button>
+        </div>
+    </div>
+
+    <div class="glass-card trash-section">
+        <h2>🗑 ゴミ箱</h2>
+        <ul id="trashList"></ul>
+        <div class="btn-row">
+            <button class="delete-btn" onclick="permanentDelete()">完全に消去</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- Firebase設定（自分のプロジェクト設定に書き換えてください） ---
+    const firebaseConfig = {
+      apiKey: "AIzaSyAOjNMADm2j7sB1tZTNmwBUcgBx-Le5yfQ",
+      authDomain: "memot-355e2.firebaseapp.com",
+      projectId: "memot-355e2",
+      storageBucket: "memot-355e2.firebasestorage.app",
+      messagingSenderId: "721220998358",
+      appId: "1:721220998358:web:8003fc01d47ea4d46a2577",
+      measurementId: "G-7X3N7XY8WF"
+    };
+    
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    // データのリアルタイム読み込み
+    db.collection("notes").orderBy("createdAt", "desc").onSnapshot((snapshot) => {
+        const noteList = document.getElementById('noteList');
+        const trashList = document.getElementById('trashList');
+        noteList.innerHTML = '';
+        trashList.innerHTML = '';
+
+        snapshot.forEach((doc) => {
+            const data = doc.data();
+            const li = document.createElement('li');
+            li.className = 'note-item';
+            
+            // HTML構造を修正: チェックボックスを上の行に配置
+            li.innerHTML = `
+                <div class="checkbox-container">
+                    <input type="checkbox" data-id="${doc.id}">
+                </div>
+                <div class="note-text">${data.text}</div>
+            `;
+            
+            if (data.status === 'active') {
+                noteList.appendChild(li);
+            } else {
+                trashList.appendChild(li);
+            }
+        });
+    });
+
+    // 保存
+    async function saveNote() {
+        const input = document.getElementById('noteInput');
+        if (!input.value.trim()) return;
+
+        await db.collection("notes").add({
+            text: input.value,
+            status: 'active',
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        input.value = '';
+    }
+
+    // ステータス更新（削除/移動）
+    function updateStatus(newStatus) {
+        const checkboxes = document.querySelectorAll('#noteList input:checked');
+        if (checkboxes.length === 0) {
+            alert("移動するメモを選択してください。");
+            return;
+        }
+        checkboxes.forEach(async (cb) => {
+            await db.collection("notes").doc(cb.dataset.id).update({ status: newStatus });
+        });
+    }
+
+    // 完全削除
+    function permanentDelete() {
+        const checkboxes = document.querySelectorAll('#trashList input:checked');
+        if (checkboxes.length === 0) {
+            alert("消去するメモを選択してください。");
+            return;
+        }
+        if (!confirm("本当に完全に消去しますか？")) return;
+        
+        checkboxes.forEach(async (cb) => {
+            await db.collection("notes").doc(cb.dataset.id).delete();
+        });
+    }
+</script>
+
+</body>
+</html>
