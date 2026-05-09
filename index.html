@@ -105,6 +105,8 @@
         .note-text {
             width: 100%; font-size: 15px; line-height: 1.5;
             word-wrap: break-word; color: #333;
+            /* ↓ ここを修正：改行を有効にする設定 ↓ */
+            white-space: pre-wrap;
         }
 
         .trash-section { opacity: 0.7; border-top: 2px dashed var(--apple-border); }
@@ -166,23 +168,17 @@
     let currentCategory = 'all'; 
     let unsubscribe = null;
 
-    // 1. カテゴリーを切り替える
     function switchCategory(category, element) {
         currentCategory = category;
-        
         document.querySelectorAll('.category-item').forEach(el => el.classList.remove('active'));
         element.classList.add('active');
-        
         const categoryNames = {schedule: 'スケジュール',shopping: '買物',todo: 'ToDo',diy: 'DIY',mem: 'メモ',all: 'すべて'};
         document.getElementById('editorTitle').innerHTML = `📝 メモを作成 <span>(${categoryNames[category]})</span>`;
-        
         loadNotes();
     }
 
-    // 2. データを読み込む (JS側でフィルタリングしてエラーを防止)
     function loadNotes() {
         if (unsubscribe) unsubscribe();
-
         unsubscribe = db.collection("notes").orderBy("createdAt", "desc").onSnapshot((snapshot) => {
             const noteList = document.getElementById('noteList');
             const trashList = document.getElementById('trashList');
@@ -191,11 +187,7 @@
 
             snapshot.forEach((doc) => {
                 const data = doc.data();
-                
-                // カテゴリーのフィルタリング
-                if (currentCategory !== 'all' && data.category !== currentCategory) {
-                    return; 
-                }
+                if (currentCategory !== 'all' && data.category !== currentCategory) return; 
 
                 const li = document.createElement('li');
                 li.className = 'note-item';
@@ -215,7 +207,6 @@
         });
     }
 
-    // 3. 保存する
     async function saveNote() {
         const input = document.getElementById('noteInput');
         if (!input.value.trim()) return;
@@ -233,11 +224,9 @@
         }
     }
 
-    // 4. ステータス更新（ゴミ箱へ移動）
     function updateStatus(newStatus) {
         const containerId = newStatus === 'trash' ? '#noteList' : '#trashList';
         const checkboxes = document.querySelectorAll(`${containerId} input:checked`);
-        
         if (checkboxes.length === 0) {
             alert("メモを選択してください。");
             return;
@@ -247,7 +236,6 @@
         });
     }
 
-    // 5. 完全に消去
     function permanentDelete() {
         const checkboxes = document.querySelectorAll('#trashList input:checked');
         if (checkboxes.length === 0) {
@@ -255,13 +243,11 @@
             return;
         }
         if (!confirm("本当に完全に消去しますか？")) return;
-        
         checkboxes.forEach(async (cb) => {
             await db.collection("notes").doc(cb.dataset.id).delete();
         });
     }
 
-    // 初回実行
     loadNotes();
 </script>
 
