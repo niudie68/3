@@ -13,6 +13,7 @@
             --apple-bg: #f5f5f7;
             --apple-yellow: #ffb300;
             --apple-border: #d2d2d7;
+            --apple-blue: #007aff;
         }
 
         body {
@@ -20,12 +21,42 @@
             background-color: var(--apple-bg);
             display: flex;
             justify-content: center;
-            padding: 40px 20px;
+            padding: 20px;
             margin: 0;
             color: #1d1d1f;
         }
 
         .container { width: 100%; max-width: 600px; }
+
+        .category-nav {
+            display: flex;
+            justify-content: space-around;
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 10px;
+            margin-bottom: 20px;
+            position: sticky;
+            top: 10px;
+            z-index: 100;
+            border: 1px solid var(--apple-border);
+        }
+
+        .category-item {
+            cursor: pointer;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #86868b;
+            transition: 0.3s;
+        }
+
+        .category-item.active {
+            background-color: white;
+            color: var(--apple-blue);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
 
         .glass-card {
             background: rgba(255, 255, 255, 0.8);
@@ -54,48 +85,46 @@
         button:hover { opacity: 0.8; }
         button.delete-btn { background-color: #ff3b30; margin-left: 10px; }
 
-        /* リスト全体のスタイル */
         ul { list-style: none; padding: 0; margin: 0; }
 
-        /* チェックボックスを上に配置するための修正 */
         .note-item {
             display: flex;
-            flex-direction: column; /* 縦並びに変更 */
-            align-items: flex-start; /* 左寄せ */
+            flex-direction: column;
+            align-items: flex-start;
             padding: 16px 0;
             border-bottom: 0.5px solid var(--apple-border);
         }
 
-        /* チェックボックスのスタイル */
-        .checkbox-container {
-            margin-bottom: 8px; /* テキストとの間隔 */
-        }
+        .checkbox-container { margin-bottom: 8px; }
 
         input[type="checkbox"] {
-            width: 22px;
-            height: 22px;
-            accent-color: var(--apple-yellow);
-            cursor: pointer;
-            margin: 0;
+            width: 22px; height: 22px; accent-color: var(--apple-yellow);
+            cursor: pointer; margin: 0;
         }
 
-        /* メモ本文のスタイル */
         .note-text {
-            width: 100%;
-            font-size: 15px;
-            line-height: 1.5;
-            word-wrap: break-word;
-            color: #333;
+            width: 100%; font-size: 15px; line-height: 1.5;
+            word-wrap: break-word; color: #333;
+            /* ↓ ここを修正：改行を有効にする設定 ↓ */
+            white-space: pre-wrap;
         }
 
         .trash-section { opacity: 0.7; border-top: 2px dashed var(--apple-border); }
+        h2 span { font-size: 0.6em; color: #86868b; margin-left: 10px; }
     </style>
 </head>
 <body>
 
 <div class="container">
+    <div class="category-nav">
+        <div class="category-item active" onclick="switchCategory('all', this)">すべて</div>
+        <div class="category-item" onclick="switchCategory('shopping', this)">🛒 買物</div>
+        <div class="category-item" onclick="switchCategory('todo', this)">✅ ToDo</div>
+        <div class="category-item" onclick="switchCategory('schedule', this)">📅 スケジュール</div>
+    </div>
+
     <div class="glass-card">
-        <h2>📝 メモを作成</h2>
+        <h2 id="editorTitle">📝 メモを作成 <span>(すべて)</span></h2>
         <textarea id="noteInput" placeholder="クラウドに保存されます..."></textarea>
         <div class="btn-row">
             <button onclick="saveNote()">保存</button>
@@ -120,66 +149,84 @@
 </div>
 
 <script>
-    // --- Firebase設定（自分のプロジェクト設定に書き換えてください） ---
+    // --- Firebase設定 ---
     const firebaseConfig = {
-      apiKey: "AIzaSyAOjNMADm2j7sB1tZTNmwBUcgBx-Le5yfQ",
-      authDomain: "memot-355e2.firebaseapp.com",
-      projectId: "memot-355e2",
-      storageBucket: "memot-355e2.firebasestorage.app",
-      messagingSenderId: "721220998358",
-      appId: "1:721220998358:web:8003fc01d47ea4d46a2577",
-      measurementId: "G-7X3N7XY8WF"
+        apiKey: "AIzaSyAOjNMADm2j7sB1tZTNmwBUcgBx-Le5yfQ",
+        authDomain: "memot-355e2.firebaseapp.com",
+        projectId: "memot-355e2",
+        storageBucket: "memot-355e2.firebasestorage.app",
+        messagingSenderId: "721220998358",
+        appId: "1:721220998358:web:8003fc01d47ea4d46a2577",
+        measurementId: "G-7X3N7XY8WF"
     };
-    
+
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
-    // データのリアルタイム読み込み
-    db.collection("notes").orderBy("createdAt", "desc").onSnapshot((snapshot) => {
-        const noteList = document.getElementById('noteList');
-        const trashList = document.getElementById('trashList');
-        noteList.innerHTML = '';
-        trashList.innerHTML = '';
+    let currentCategory = 'all'; 
+    let unsubscribe = null;
 
-        snapshot.forEach((doc) => {
-            const data = doc.data();
-            const li = document.createElement('li');
-            li.className = 'note-item';
-            
-            // HTML構造を修正: チェックボックスを上の行に配置
-            li.innerHTML = `
-                <div class="checkbox-container">
-                    <input type="checkbox" data-id="${doc.id}">
-                </div>
-                <div class="note-text">${data.text}</div>
-            `;
-            
-            if (data.status === 'active') {
-                noteList.appendChild(li);
-            } else {
-                trashList.appendChild(li);
-            }
+    function switchCategory(category, element) {
+        currentCategory = category;
+        document.querySelectorAll('.category-item').forEach(el => el.classList.remove('active'));
+        element.classList.add('active');
+        const categoryNames = {all: 'すべて', shopping: '買物', todo: 'ToDo', schedule: 'スケジュール'};
+        document.getElementById('editorTitle').innerHTML = `📝 メモを作成 <span>(${categoryNames[category]})</span>`;
+        loadNotes();
+    }
+
+    function loadNotes() {
+        if (unsubscribe) unsubscribe();
+        unsubscribe = db.collection("notes").orderBy("createdAt", "desc").onSnapshot((snapshot) => {
+            const noteList = document.getElementById('noteList');
+            const trashList = document.getElementById('trashList');
+            noteList.innerHTML = '';
+            trashList.innerHTML = '';
+
+            snapshot.forEach((doc) => {
+                const data = doc.data();
+                if (currentCategory !== 'all' && data.category !== currentCategory) return; 
+
+                const li = document.createElement('li');
+                li.className = 'note-item';
+                li.innerHTML = `
+                    <div class="checkbox-container">
+                        <input type="checkbox" data-id="${doc.id}">
+                    </div>
+                    <div class="note-text">${data.text}</div>
+                `;
+                
+                if (data.status === 'active') {
+                    noteList.appendChild(li);
+                } else {
+                    trashList.appendChild(li);
+                }
+            });
         });
-    });
+    }
 
-    // 保存
     async function saveNote() {
         const input = document.getElementById('noteInput');
         if (!input.value.trim()) return;
 
-        await db.collection("notes").add({
-            text: input.value,
-            status: 'active',
-            createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-        input.value = '';
+        try {
+            await db.collection("notes").add({
+                text: input.value,
+                status: 'active',
+                category: currentCategory, 
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            input.value = '';
+        } catch (e) {
+            console.error("Error saving note: ", e);
+        }
     }
 
-    // ステータス更新（削除/移動）
     function updateStatus(newStatus) {
-        const checkboxes = document.querySelectorAll('#noteList input:checked');
+        const containerId = newStatus === 'trash' ? '#noteList' : '#trashList';
+        const checkboxes = document.querySelectorAll(`${containerId} input:checked`);
         if (checkboxes.length === 0) {
-            alert("移動するメモを選択してください。");
+            alert("メモを選択してください。");
             return;
         }
         checkboxes.forEach(async (cb) => {
@@ -187,7 +234,6 @@
         });
     }
 
-    // 完全削除
     function permanentDelete() {
         const checkboxes = document.querySelectorAll('#trashList input:checked');
         if (checkboxes.length === 0) {
@@ -195,11 +241,12 @@
             return;
         }
         if (!confirm("本当に完全に消去しますか？")) return;
-        
         checkboxes.forEach(async (cb) => {
             await db.collection("notes").doc(cb.dataset.id).delete();
         });
     }
+
+    loadNotes();
 </script>
 
 </body>
